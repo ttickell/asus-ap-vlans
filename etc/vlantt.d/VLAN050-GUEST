@@ -1,0 +1,6 @@
+VLAN_ID=50
+BRIDGE_INT=br1
+LAN_IFNAME=lan1
+PORTS_TAGGED="eth0, eth1, eth2, eth4"
+PORTS_UNTAGGED="eth3"
+WIFI_SSID="TickellGuest"

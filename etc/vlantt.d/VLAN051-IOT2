@@ -1,0 +1,4 @@
+VLAN_ID=51
+BRIDGE_INT=br2
+LAN_IFNAME=lan2
+WIFI_SSID="gadgets-garage"

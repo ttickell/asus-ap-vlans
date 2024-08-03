@@ -1,0 +1,4 @@
+VLAN_ID=200
+BRIDGE_INT=br3
+LAN_IFNAME=lan3
+PORTS_TAGGED="eth0,eth1,eth2,eth3,eth4"

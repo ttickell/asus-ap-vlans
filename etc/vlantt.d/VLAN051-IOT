@@ -1,0 +1,6 @@
+VLAN_ID=51
+BRIDGE_INT=br2
+LAN_IFNAME=lan2
+PORTS_TAGGED="eth0, eth1, eth3, eth4"
+PORTS_UNTAGGED="eth2"
+WIFI_SSID="gadgets"
