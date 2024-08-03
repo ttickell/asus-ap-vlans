@@ -1,34 +1,68 @@
 #!/bin/sh
 
+## Do things a bit differently if we are testing
+##
+## Set the environment vairable VLAN_TT_TESTING to 1 to enable testing mode
 if [ "$VLAN_TT_TESTING" -eq 1 ]; then
 	base="/tmp/mnt/ENTWARE/asus-ap-vlans-tt"
 else
 	base="/jffs/local"
 fi
 
-etc="$base/etc"
+## Where are our configiguration files?
+## 
+## default location is /jffs/local/etc/vlan_tt.d but this may be overriden by
+##  setting the environment variable VLAN_TT_CONFIG_DIR
+if [ ! -z "$VLAN_TT_CONFIG_DIR" ]; then
+	etc="$VLAN_TT_CONFIG_DIR"
+else
+	etc="$base/etc"
+fi
+
+## Name top bue used as tag when logging to Syslog
 myname=$(basename "$0")
 
+## Logging 
+## 
+## message - log the things we normally want to see
+## message <message to log>
 message() {
 	[ "$VLAN_TT_TESTING" -eq 1 ] && echo "INFO: $@" 1>&2
 	logger -t "$myname" -p user.notice "$@"
 }
 
+## error - log the things that didn't go as planned
+##
+## error <error message>
 error() {
 	[ "$VLAN_TT_TESTING" -eq 1 ] && echo "ERROR: $@" 1>&2
 	logger -t "$myname" -p user.error "$@"
 }
 
+## Debug - log the things we need to figure out why things didn't go as planned
+##
+## debug <debug message>
 debug() {
 	[ "$VLAN_TT_TESTING" -eq 1 ] && echo "DEBUG: $@" 1>&2
 	logger -t "$myname" -p user.debug "$@"
 }
 
+## Command Log - stream of things we actually udpated on the router
+##
+## command_log <command>
 command_log(){
 	[ "$VLAN_TT_TESTING" -eq 1 ] && echo "COMMAND: $@" 1>&2
 	logger -t "$myname" -p user.info "$@"
 }
 
+## Log the execution and result of a command, return SUCCESS on sucessa and FAIL on fail.
+## 
+## Additioanlly returns values of 0 on success and 1 on failure
+##
+## Note - this is not perfect - some commands need better handling, noteably
+## the eapd restart. Where possible, those are logged 
+## 
+## command_execute <command>
 command_execute(){
 	local command="$1"
 	local output
@@ -49,7 +83,11 @@ command_execute(){
 	fi
 }
 
-# Determine if a bridge exists
+## Determine if a bridge exists
+##
+## before we make a bridge, we need to know if it already exists
+##
+## bridge_exists <bridge name>
 bridge_exists(){
 	local bridge="$1"
 	local output
@@ -76,6 +114,11 @@ bridge_exists(){
 	return 0
 }
 
+## Create a bridge
+##
+## if we need a bridge that doesn't exist, make one.
+## 
+## bridge_create <bridge name>
 bridge_create(){
 	local bridge="$1"
 
@@ -89,6 +132,10 @@ bridge_create(){
 }
 
 ## Get a list of existing bridges
+## 
+## Simple and direct-just parrse out the names of all the bridge we have
+##
+## bridge_list
 bridge_list(){
 	local list
 	list=$(brctl show | grep '^br[0-9]' | awk '{print $1}' | tr '\n' ' ')
@@ -96,6 +143,12 @@ bridge_list(){
 	return 0
 }
 
+## Check if an interface is in a bridge
+## 
+## for any given bridge and interface, check to see if that interface
+##  is already in the bridge
+##
+## bridge_has_int <bridge> <interface>
 bridge_has_int(){
 	local bridge="$1"
 	local int="$2"
@@ -112,6 +165,11 @@ bridge_has_int(){
 	fi
 }
 
+## Configuration of a port list is comma deliomited, may have spaces, etc.
+##
+## Clean them up.
+##
+## normalize_ports <port list>
 normalize_ports(){
 	local list="$1"
 
@@ -119,6 +177,13 @@ normalize_ports(){
 	echo "$list"
 }
 
+## Create a tagged interface
+##
+## This creates the virutal ethernet interface asociated with a spepific VLAN
+##
+## If the interface already exists, it will be left alone.
+##
+## tagged_interface_create <interface> <vlan>
 tagged_interface_create(){
 	local int="$1"
 	local vlan="$2"
@@ -126,16 +191,18 @@ tagged_interface_create(){
 	local res
 	local tagged_int
 
+	## Did we get the options we need to run?
 	if [ -z "$int" -o -z "$vlan" ]; then
 		error "tagged_interface_create : int and vlan cannot be null - got \"$int\" and \"$vlan\""
 		echo "FAIL"
 		return 1
 	fi
 	debug "tagged_inteface create : working with int $int on vlan $vlan"
+	## The name of each interface is <real>.<vlan> - ie. eth1.500 would be VLAN 500 on eth1
 	tagged_int="${int}.${vlan}"
 	output=$(ip link show $tagged_int 2>&1)
 	res=$?
-	## Error show means the interface doesn't exist
+	## Error in an ip link show means the interface doesn't exist and we need to create it
 	if [ "$res" -gt 0 ]; then
 		debug "tagged_interface_create : $tagged_int does not seem to exist.  Creating"
 		output=$(command_execute "ip link add link ${int} name ${tagged_int} type vlan id ${vlan}")
@@ -145,6 +212,7 @@ tagged_interface_create(){
 			return 1
 		fi
 
+		## After creaton, the interface must be marked up for use
 		debug "tagged_interface_create : setting $tagged_int up"
 		output=$(command_execute "ip link set ${tagged_int} up")
 		if [ "$output" == "FAIL" ]; then
@@ -156,7 +224,12 @@ tagged_interface_create(){
 	echo "SUCESS"
 	return 0
 }
-			
+
+## bridge_add_int bridge int
+##
+## Add and interface to a bridge.  If the interface is already in another bridge, it will be removed	
+## 
+## bridge_add_int <bridge> <interface>		
 bridge_add_int(){
 	local bridge="$1"
 	local int="$2"
@@ -167,7 +240,7 @@ bridge_add_int(){
 	debug "bridge_add_int : ------------------------------------------------------"
 	debug "bridge_add_int : called with bridge \"$bridge\" and int \"$int\""
 
-	# make sure we have what we need
+	## make sure we have what we need
 	if [ -z "$bridge" -o -z "$int" ]; then 
 		error "bridge_add_int : bridge and int must be specified"
 		echo "FAIL"
@@ -187,12 +260,12 @@ bridge_add_int(){
 	for cur_br in $list; do
 		debug "bridge_add_int : looking at bridge $cur_br to see if $int needs to be removed"
 		if [ "$cur_br" == "$bridge" ]; then
-			# This is the one we want in there and we already know it's not
-			# becase we didn't return, above.
+			## This is the one we want in there and we already know it's not
+			##  becase we didn't return, above.
 			debug "bridge_add_int : skipping $cur_br for $int removal because it matches desired bridge $bridge"
 			continue
 		fi
-		# if this is a member of another bridge, remove it	
+		## if this is a member of another bridge, remove it	
 		output=$(bridge_has_int "$cur_br" "$int")
 		if [ "$output" == "TRUE" ]; then
 			debug "bridge_add_int : Ensuring $int removed from $cur_br"
@@ -201,7 +274,7 @@ bridge_add_int(){
 	done
 
 	## Now we can finally add the interface to the bridge, knowing it's not
-	## already there and it's not in other bridges
+	##  already there and it's not in other bridges
 	debug "bridge_add_int : Adding $int to $bridge"
 	output=$(command_execute "brctl addif $bridge $int")
 	res=$?
@@ -214,7 +287,9 @@ bridge_add_int(){
 	fi
 }
 	
-
+## Ensure we have all the tagged ports we want in a specific bridge for a VLAN
+##
+## tagged_ports "<port list>" "<bridge>" "<vlan>"
 tagged_ports(){
 	local ports="$1"
 	local bridge="$2"
@@ -225,6 +300,14 @@ tagged_ports(){
 	local tagged_port
 
 	debug "tagged_ports called with ports \"$ports\" bridge \"$bridge\" vlan \"$vlan\""
+	## Make sure we have the data we need to proceed
+	if [ -z "$ports" -o -z "$bridge" -o -z "$vlan" ]; then
+		error "tagged_ports : ports, bridge, and vlan must be specified"
+		echo "FAIL"
+		return 1
+	fi
+
+	## Normalize the port list to remove extra white space and commas
 	ports=$(normalize_ports "$ports")
 	for port in $ports; do
 		debug "tagged_ports : looking at $port in $bridge for $vlan"
@@ -249,6 +332,8 @@ tagged_ports(){
 		fi
 
 		## Add the interface to the bridge 
+		##
+		## Note - bridge_add_int will remove the interface from any other bridge it's in
 		debug "tagged_ports : calling bridge_add_int with \"$bridge\" and \"$tagged_port\""
 		output=$(bridge_add_int "$bridge" "$tagged_port")
 
@@ -257,6 +342,13 @@ tagged_ports(){
 	return 0
 }
 
+## Setup untagged ports
+##
+## These are ports that will be taken out of the default bridge (br0) and put into
+## the specified bridge.  The expecation is that bridge also has a tagged port	wich is linked
+## to an upstream device that knows what to do with the VLAN traffic. 
+##
+## untagged_ports "<port list>" "<bridge>"
 untagged_ports(){
 	local ports="$1"
 	local bridge="$2"
@@ -267,6 +359,8 @@ untagged_ports(){
 	local cur_br
 
 	debug "untagged_ports : called with ports \"$ports\" and bridge \"$bridge\""
+
+	## Make sure we have the data we need to proceed
 	if [ -z "$ports" -o -z "$bridge" ]; then
 		error "untagged_ports : both ports and bridge must be specified"
 		echo "FAIL"
@@ -274,7 +368,12 @@ untagged_ports(){
 	fi
 
 	debug "untagged_ports : normalizing port list \'$ports\'"
+
+	## Normalize the port list to remove extra white space and commas
 	ports=$(normalize_ports "$ports")
+
+	## For every port int he list, add it to the desired bridge.
+	## Note, bridge_add_int handles removing the port from any bridge it's currently assigned to
 	for port in $ports; do
 		debug "untagged_ports : calling bridge_add_int with bridge \"$bridge\" and port \"$port\""
 		output=$(bridge_add_int "$bridge" "$port")
@@ -284,41 +383,64 @@ untagged_ports(){
 	done
 }
 
+## Get a list of interfaces associated with a specific SSID
+##
+## This is done by looking at the NVRAM settings for the SSID and finding the interfaces
+## 
+## wifi_get_ints_by_ssid <ssid>
 wifi_get_ints_by_ssid(){
 	local ssid="$1"
 	local list
+
+	## Make sure we have what we need to run
 	if [ -z "$ssid" ]; then
 		error "wifi_get_ints_by_ssid : ssid  opt cannot be null!"
 		echo "FAIL"
 		return 1
 	fi
+
+	## Pull data from NVRAM
 	debug "wifi_get_ints_by_ssid : nvram show 2>&1 | grep \"_ssid=${ssid}\" | sed -e 's/_ssid=.*//' | tr '\n' ' '"
 	list=$(nvram show 2>&1 | grep "_ssid=${ssid}" | sed -e 's/_ssid=.*//' | tr '\n' ' ')
 	debug "wifi_get_ints_by_ssid : got list - $list"
+
+	## Return the list of interfaces
 	echo $list
 	return 0
 }
 
+## Get a list of interfaces associated with a specific bridge
+##
+## This is needed to reset the lanX_ifnames settings in NVRAM
+## bridge_get_ints <bridge>
 bridge_get_ints(){
 	local bridge="$1"
 	local list
 
+	## Make sure we have what we need to run
 	if [ -z "$bridge" ]; then
 		error "bridge_get_ints : bridge opt cannot be null!"
 		echo "FAIL"
 		return 1
 	fi
 
+	## Get the list of interfaces in the bridge
 	list=$(brctl show $bridge | awk '{print $NF}' | grep -v interfaces | tr '\n' ' ')
+	## Return the list of interfaces
 	echo $list
 	return 0
 }
 
-##  $output=$(wifi_config "$VLAN_ID" "$BRIDGE_INT" "$LAN_IFNAME" "$WIFI_SSID")
-##  Reconfigure interfaces attached to SSIDs defined in config with associated VLANs.
+## $output=$(wifi_config "$VLAN_ID" "$BRIDGE_INT" "$LAN_IFNAME" "$WIFI_SSID")
+## Ironic that my comment for this function was a copy and paste of a stupid error it took
+##  twenty minutes to find.  Kept for posterity.
 ## 
-##  Because ASUS reconfigures it's own stuff based on varius lanX_ifnames settings, we
-##   we have to make sure we take care of those, too.
+## Reconfigure interfaces attached to SSIDs defined in config with associated VLANs.
+## 
+## Because ASUS reconfigures it's own stuff based on varius lanX_ifnames settings, we
+##  we have to make sure we take care of those, too.
+##
+## wifi_config <vlan> <bridge> <lan_ifname> <wifi_ssid>
 wifi_config(){
 	local vlan="$1"
 	local bridge="$2"
@@ -375,6 +497,8 @@ wifi_config(){
 ##
 ## This should work in command_execute so things get logged, but it causes
 ##  things to hang - probably because eapd daemonizes, but have to debug.
+##
+## restart_eapd
 restart_eapd(){
 
 	# restart eapd
@@ -410,15 +534,18 @@ for config in $(ls "${etc}/vlantt.d"); do
 	unset WIFI_SSID
 	unset WIFI_SSID_LIST
 
+	## Load the configuration file
 	message "working on \"${config}\""
 	. "${etc}/vlantt.d/${config}"
 
 	## Find and validate configuration
 	if [ -z "$VLAN_ID" -o -z "$BRIDGE_INT" ]; then
+		## VLAN_ID and BRIDGE_INT are required fore any permutation of the configuration
 		echo "Information needed is not set in $config:"
 		echo "  -> VLAN_ID must be set to the VLAN ID required"
 		echo "  -> BRIDGE_INT must be set to the "brX" name for the bridge to use"
 		echo
+		## Everything else may be required depending on the action we are taking. 
 		echo "Additionally, the following may be included:"
 		echo "  -> PORTS_TAGGED must be set to the physical ports to tag (comma separated)"
 		echo "  -> PORTS_UNTAGGED - comma separated list of untagged ports to include"
@@ -440,7 +567,7 @@ for config in $(ls "${etc}/vlantt.d"); do
 	fi
 
 	# We have the data we need to create tagged ports
-	if [ ! -z "$VLAN_ID" -a ! -z "BRIDGE_INT" -a ! -z "$PORTS_TAGGED" ]; then
+	if [ ! -z "$VLAN_ID" -a ! -z "$BRIDGE_INT" -a ! -z "$PORTS_TAGGED" ]; then
 		## Create / Add Tagged Ints
 		debug "main : calling tagged_ports with tagged ports  \"$PORTS_TAGGED\" for bridge \"$BRIDGE_INT\" on VLAN \"VLAN_ID\""
 		output=$(tagged_ports "$PORTS_TAGGED" "$BRIDGE_INT" "$VLAN_ID")
@@ -449,6 +576,7 @@ for config in $(ls "${etc}/vlantt.d"); do
 			exit
 		fi
 	else
+		## If we could not work with the configuration, note what was missing
 		debug "main : Not processing tagged ports because: "
 		debug "       $config settings contain insufficient iformation"
 		debug "       VLAN_ID        -> $VLAN_ID"
@@ -457,13 +585,14 @@ for config in $(ls "${etc}/vlantt.d"); do
 	fi
 
 	## Assign untagged Ports
-	if [ ! -z "$VLAN_ID" -a ! -z "BRIDGE_INT" -a ! -z "$PORTS_UNTAGGED" ]; then
+	if [ ! -z "$VLAN_ID" -a ! -z "$BRIDGE_INT" -a ! -z "$PORTS_UNTAGGED" ]; then
 		debug "main : calling untagged_ports with ports \"$PORTS_UNTAGGED\" and bridge \"$BRIDGE_INT\""
 		output=$(untagged_ports "$PORTS_UNTAGGED" "$BRIDGE_INT")
 		if [ "$	output" == "FAIL" ];then
 			error "main : untagged_ports returned failure"
 		fi
 	else 
+		## If we could not work with the configuration, note what was missing
 		debug "main : Not processing untagged ports because: "
 		debug "       $config settings contain insufficient iformation"
 		debug "       VLAN_ID        -> $VLAN_ID"
@@ -482,6 +611,7 @@ for config in $(ls "${etc}/vlantt.d"); do
 		fi
 		WIFI_CHANGED=1
 	else
+		## If we could not work with the configuration, note what was missing
 		debug "main : not processing wifi config because: "
 		debug "       $config settings contain insufficient iformation"
 		debug "       VLAN_ID        -> $VLAN_ID"
@@ -501,6 +631,7 @@ if [ "$WIFI_CHANGED" -eq 1 ]; then
 	restart_eapd
 fi
 
+## Dump extra information if we are testing
 if [ "$VLAN_TT_TESTING" -eq 1 ]; then
 	nvram show | grep -E "lan.?_ifname.?"
 fi
