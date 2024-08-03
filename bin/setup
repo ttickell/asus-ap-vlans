@@ -43,4 +43,16 @@ if [ "$have_merlin" -eq 1 ]; then
 	# Make sure scripts are enabled on the node we are setting up
 	nvram set jffs2_scripts=1
 	nvram commit
+else
+	## Execute the script for initial changes
+	${path}/bin/vlan_tt
+	# Make sure our cron job is there - will be missing in reboot
+	test=$(grep "\# vlan_tt" "/var/spool/cron/crontabs/nimda" 2>&1)
+	res=$?
+
+	## Add Cron job to re-execute to keep to fix any updates made after a GUIE change
+	if [ "$res" -gt 0 ]; then 
+		echo '*/1 * * * * 	/jffs/local/bin/vlan_tt  # added by vlan_tt setup' >> /var/spool/cron/crontabs/nimda
+		killall -HUP crond
+	fi
 fi
