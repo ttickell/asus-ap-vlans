@@ -1,9 +1,15 @@
 #!/bin/sh
 umask 022
 
+## This script is used to setup the vlan_tt script to run on boot and when service state changes, on Asus-Merlin installs
+## and via cron on AsusWRT stock installs.
+
+## Where are our files?
 path=/jffs/local
+## Stubs are the additions to the Merlin scripts, each named for the script they are to be added to
 stubs="${path}/stubs"
 
+## Check if we are on Merlin
 have_merlin=`uname -a | grep -i merlin`
 res=$?
 if [ "$res" -gt 0 ]; then
@@ -13,9 +19,13 @@ else
 	script_path='/jffs/scripts'
 fi
 
+## Make surre our pemrissons look right
 chmod 755 ${path}/bin/vlan_tt
 mkdir -p "${path}/etc/vlantt.d"
 
+## If we have Merlin, setup the /jffs/scrtips:
+##  services-start - for when the unit boots
+##  service-event-end - for when wireless reconfiguration happens
 if [ "$have_merlin" -eq 1 ]; then
 	for script in services-start service-event-end; do
 		full_script="${script_path}/${script}"
@@ -40,10 +50,15 @@ if [ "$have_merlin" -eq 1 ]; then
 		fi
 	done
 
-	# Make sure scripts are enabled on the node we are setting up
+	## Make sure scripts are enabled on the node we are setting up
 	nvram set jffs2_scripts=1
 	nvram commit
+
 else
+	## if we don't have merlin, we need to create a cron job to run frequently.
+	## We also will rely on an external cron jon re-run this setup / re-install 
+	## the cron job after each reboot.
+	##
 	## Execute the script for initial changes
 	${path}/bin/vlan_tt
 	# Make sure our cron job is there - will be missing in reboot
@@ -56,3 +71,7 @@ else
 		killall -HUP crond
 	fi
 fi
+## Finally, execute the script to bring the system into defined state
+##  On iniital setup, there probably is no deifned state - but we need this for the 
+##  remote cron to ensure each run put the unit into what we previously defined.
+${path}/bin/vlan_tt
