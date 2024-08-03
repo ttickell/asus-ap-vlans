@@ -1,5 +1,12 @@
 #!/bin/sh
 
+## vlan_tt - VLANs Take Two
+
+## This script is meant for use on Asus routers running in access point mode.
+##  Any other use may remove your node from the networ ... or worse.
+##
+## for full details please see README.md
+
 ## Do things a bit differently if we are testing
 ##
 ## Set the environment vairable VLAN_TT_TESTING to 1 to enable testing mode
