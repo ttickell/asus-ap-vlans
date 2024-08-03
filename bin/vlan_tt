@@ -314,7 +314,11 @@ bridge_get_ints(){
 	return 0
 }
 
-# $output=$(wifi_config "$VLAN_ID" "$BRIDGE_INT" "$LAN_IFNAME" "$WIFI_SSID")
+##  $output=$(wifi_config "$VLAN_ID" "$BRIDGE_INT" "$LAN_IFNAME" "$WIFI_SSID")
+##  Reconfigure interfaces attached to SSIDs defined in config with associated VLANs.
+## 
+##  Because ASUS reconfigures it's own stuff based on varius lanX_ifnames settings, we
+##   we have to make sure we take care of those, too.
 wifi_config(){
 	local vlan="$1"
 	local bridge="$2"
@@ -324,6 +328,7 @@ wifi_config(){
 	local cur_int
 	local output
 
+	## Make sure we were passed all the data we need to take action
 	debug "wifi_config : called with vlan \"$vlan\" bridge \"$bridge\" lan_ifname \"$lan_ifname\" ssid \"$wifi_ssid\""
 	if [ -z "$vlan" -o -z "$bridge" -o -z "$lan_ifname" -o -z "$wifi_ssid" ]; then
 		debug "wifi_config : vlan, bridge, lan_ifname, and wifi_ssid cannot be null!"
@@ -331,7 +336,10 @@ wifi_config(){
 		return 1
 	fi
 
-	# get list of wifi interfaces
+	## get list of wifi interfaces
+	##
+	## given we know the SSID we want to modify, we need to find the interfaces ASUS
+	##  associated with those SSIDs.
 	debug "wifi_config calling wifi_get_ints_by_ssid \"$wifi_ssid\""
 	wifi_ints=$(wifi_get_ints_by_ssid "$wifi_ssid")
 	debug "wifi_config : Got list of wifi Ints for $wifi_ssid - $wifi_ints"
@@ -341,7 +349,10 @@ wifi_config(){
 		return 1
 	fi
 
-	# move each interface to the right bridge
+	## move each interface to the right bridge
+	##
+	## default configuration puts all the Wireless networks on the same bridge
+	##  - we need to reassign them to the bridges we want, with the right VLAN setups.
 	for cur_int in $wifi_ints; do
 		debug "wifi_config : Calling bridge_add_int \"$bridge\" \"$cur_int\""
 		output=$(bridge_add_int "$bridge" "$cur_int")
@@ -360,6 +371,10 @@ wifi_config(){
 	echo "SUCCESS"
 }	
 
+## Restart EAPD after Wifi Changes
+##
+## This should work in command_execute so things get logged, but it causes
+##  things to hang - probably because eapd daemonizes, but have to debug.
 restart_eapd(){
 
 	# restart eapd
@@ -374,10 +389,19 @@ restart_eapd(){
 	echo "SUCCESS"
 }
 
+## We need to know if we changed WIFI related interfaces, so we know
+##  if we need to restart EAPD or not, later.
 WIFI_CHANGED=0
+
+## Start of script.  For every configuration file, load it's data and use 
+##  those definitions to to reconfigure our bridge / tagged int settings.
+##
+## Note - need to improve the selection of configuration files so we only 
+##  load relevant things (not every file/dir that exists)
 message "$0 - Started at $(date)"
 for config in $(ls "${etc}/vlantt.d"); do
-
+	## unset the variables set in config files so we don't mix in 
+	##  data from the last iteration
 	unset VLAN_ID
 	unset BRIDGE_INT
 	unset LAN_IFNAME
@@ -468,10 +492,15 @@ for config in $(ls "${etc}/vlantt.d"); do
 
 done
 
+## If we changed wifi things, restart EAPD.  
+##  Sadly, I don't know why we do this - found it in others' documentation but no one documented
+##  what EAPD is / does / why it's needed.  That's on the list to figure out.
 if [ "$WIFI_CHANGED" -eq 1 ]; then
 	output=$(bridge_get_ints "br0")
 	nvram set lan_ifnames="$output"
 	restart_eapd
 fi
 
-nvram show | grep -E "lan.?_ifname.?"
+if [ "$VLAN_TT_TESTING" -eq 1 ]; then
+	nvram show | grep -E "lan.?_ifname.?"
+fi
