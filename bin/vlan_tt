@@ -258,7 +258,7 @@ bridge_add_int(){
 	output=$(bridge_has_int "$bridge" "$int")
 	if [ "$output" == "TRUE" ]; then
 		debug "bridge_add_int : Int \"$int\" is already in \"$bridge\" - returning"
-		echo "SUCESS"
+		echo "NOCHANGE"
 		return 0
 	fi
 
@@ -456,6 +456,9 @@ wifi_config(){
 	local wifi_ints
 	local cur_int
 	local output
+	local changed
+
+	changed=0
 
 	## Make sure we were passed all the data we need to take action
 	debug "wifi_config : called with vlan \"$vlan\" bridge \"$bridge\" lan_ifname \"$lan_ifname\" ssid \"$wifi_ssid\""
@@ -487,17 +490,27 @@ wifi_config(){
 		output=$(bridge_add_int "$bridge" "$cur_int")
 		if [ "$output" == "FAIL" ]; then
 			error "wifi_config : could not att $cur_int to $bridge.  bridge_add_int errored out"
+		elif [ "$output" == "SUCCESS" ]; then
+			## if we added an interface to the bridge, we need to note that
+			## so we can return a value sufficient to restart EAPD
+			changed=1
 		fi
 	done
-	# get list of bridge interfaces
-	output=$(bridge_get_ints "$bridge")
-	# reset lanX_ifnames to list of bridge interfaces
-	if [ ! -z "$output" -a "$output" != "FAIL" ]; then
-		echo placeholder
-		nvram set "${lan_ifname}_ifnames"="$output"
+
+	## if we changed something, reset the nvram lanX_ifnames settings
+	if [ "$changed" -eq 1 ]; then
+		# get list of bridge interfaces
+		output=$(bridge_get_ints "$bridge")
+		# reset lanX_ifnames to list of bridge interfaces
+		if [ ! -z "$output" -a "$output" != "FAIL" ]; then
+			echo placeholder
+			nvram set "${lan_ifname}_ifnames"="$output"
+		fi
+		nvram set "${lan_ifname}_ifname"="$bridge"
+		echo "SUCCESS"
+	else
+		echo "NOCHANGE"
 	fi
-	nvram set "${lan_ifname}_ifname"="$bridge"
-	echo "SUCCESS"
 }	
 
 ## Restart EAPD after Wifi Changes
@@ -615,8 +628,11 @@ for config in $(ls "${etc}/vlantt.d"); do
 		debug "main : wifi_config returns"
 		if [ "$output" == "FAIL" ]; then
 			error "main : wifi_config returned failure:"
+		elif [ "$output" == "SUCCESS" ]; then
+			WIFI_CHANGED=1
+		else
+			debug "main : wifi_config returned no change"
 		fi
-		WIFI_CHANGED=1
 	else
 		## If we could not work with the configuration, note what was missing
 		debug "main : not processing wifi config because: "
