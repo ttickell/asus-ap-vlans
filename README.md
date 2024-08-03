@@ -39,6 +39,8 @@ Prerequisites for use are straight forward:
    - Granted, the later would be more useful in "router" mode, but nothing in this script manipulates the firewall setup to make that work
 ## Installation on AP running Asuswrt-Merlin
 ### Initial Setup
+#### Scripts and Config on /jffs
+#### Updating Configuration
 ### Running on Reboots
 ### Running on GUI Changes
 ## Installation on stock Asus firmware
