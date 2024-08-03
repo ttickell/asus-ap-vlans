@@ -1,3 +1,10 @@
+## Another case - no SSID, no devices connected, just
+## tag every port for a known VLAN
+##
+## This is only useful you might maybe plug in devices on multiple
+## ports passing tagged traffic - in real life, this is probably
+## something you want on a trunk port, with untagged ports added (just
+## like the first example)
 VLAN_ID=200
 BRIDGE_INT=br3
 LAN_IFNAME=lan3

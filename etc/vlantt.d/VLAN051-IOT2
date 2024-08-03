@@ -1,3 +1,14 @@
+## This is a bit different:
+##
+## Use case - I have a wifi SSID specifically to have a 
+## network name refer to the location its in (for stupid devices that
+## can't managed to pick the closest node).
+## 
+## I want that SSID to *also* be on the IO VLAN 51.
+## 
+## We need to specify the same bridge and lan as VLAN051-IOT,
+## so the tool can update the variables in nvram - because there is 
+## no way in nvram to know what VLANDs we are using
 VLAN_ID=51
 BRIDGE_INT=br2
 LAN_IFNAME=lan2

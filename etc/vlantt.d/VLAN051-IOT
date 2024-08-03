@@ -1,3 +1,6 @@
+## This one works just like the VLAN05-GUEST definition,
+## But note the bridge interface (and corresponding LAN_IFNAME) 
+## increment. 
 VLAN_ID=51
 BRIDGE_INT=br2
 LAN_IFNAME=lan2

@@ -1,3 +1,10 @@
+## Setup the following:
+## A new bridge, named "br1" which will be associated with the 
+## wifi network named, "TickellGuest" and will use VLAN_ID 50.
+##
+## Make sure all available ports are tagged with VLAN_ID 50, except
+## port eth3 - which will be untagged on this VLAN (suitable for connecting
+## some random device)
 VLAN_ID=50
 BRIDGE_INT=br1
 LAN_IFNAME=lan1
