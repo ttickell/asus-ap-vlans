@@ -1,0 +1,4 @@
+# --- added with vlan_tt setup script --
+# run this everytime we finish starting services
+logger -t vlan_tt -p user.notice "vlan_tt called via $0 with arguments $@"
+/jffs/local/bin/vlan_tt

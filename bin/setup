@@ -1,0 +1,46 @@
+#!/bin/sh
+umask 022
+
+path=/jffs/local
+stubs="${path}/stubs"
+
+have_merlin=`uname -a | grep -i merlin`
+res=$?
+if [ "$res" -gt 0 ]; then
+	have_merlin=0
+else
+	have_merlin=1
+	script_path='/jffs/scripts'
+fi
+
+chmod 755 ${path}/bin/vlan_tt
+mkdir -p "${path}/etc/vlantt.d"
+
+if [ "$have_merlin" -eq 1 ]; then
+	for script in services-start service-event-end; do
+		full_script="${script_path}/${script}"
+
+		if [ ! -f "$full_script" ]; then
+			echo '#!/bin/sh' > $full_script
+			echo >> $full_script
+			chmod 755 $full_script
+		fi
+
+		## Skip if we have already modified this script
+		test=`grep vlan_tt ${full_script} 2>&1`
+		res=$?
+		if [ $res -eq 0 ]; then
+			continue
+		fi
+	
+		if [ -f "${stubs}/${script}" ]; then
+			cat "${stubs}/${script}" >> $full_script
+		else
+			echo "ERROR: ${stubs}/${script} NOT FOUND"
+		fi
+	done
+
+	# Make sure scripts are enabled on the node we are setting up
+	nvram set jffs2_scripts=1
+	nvram commit
+fi

@@ -1,0 +1,6 @@
+# --- added with vlan_tt setup script --
+# run this everytime we have a wireless event
+if [ "$2" = "wireless" ]; then
+	logger -t vlan_tt -p user.notice "vlan_tt called via $0 with arguments $@"
+	/jffs/local/bin/vlan_tt
+fi
