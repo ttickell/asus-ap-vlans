@@ -17,6 +17,59 @@ fi
 ## get fucntions
 . ${base}/bin/vlan_tt.func 
 
+bridge_list=$(bridge_list)
+for bridge in $bridge_list; do
+	if [ "$bridge" == "br0" ]; then
+		continue
+	fi
+
+	int_list=$(bridge_get_ints "$bridge")
+
+	for int in $int_list; do
+		brctl delif "$bridge" "$int"
+	done
+	ip link set $bridge down
+	brctl delbr "$bridge"
+done 
+
 for int in $(ip link show | grep 'eth.\.' | awk '{print $2}' | awk -F@ '{print $1}'); do
-	echo $int
+	ip link set $int down
+	ip link delete $int
 done
+
+real_ints=$(ip link | grep 'eth.: ' | grep -v '@' | awk '{print $2}' | sed -e 's/://')
+for int in $real_ints; do
+	brctl addif br0 $int
+done
+
+for int in $(nvram show 2>&1 | grep -E 'wl[0-9]?\.?[0-9]?_ifname' | grep -v '_ifnames' | sed -e 's/^.*=//' | sort -u  | grep -v eth); do
+	check=$(nvram get ${int}_bss_enabled)
+	if [ "$check" -eq 1 ]; then
+		brctl addif br0 $int
+	fi
+done
+
+for name in $(nvram show 2>&1 | grep -E 'br[0-9]_ifnames' | sed -e s'/=.*//'); do
+	nvram unset $name
+done
+for name in $(nvram show 2>&1 | grep -E 'lan[0-9]_ifnames' | sed -e s'/=.*//'); do
+	nvram unset $name
+done
+for name in $(nvram show 2>&1 | grep -E 'br[0-9]_ifname' | sed -e s'/=.*//'); do
+	nvram unset $name
+done
+for name in $(nvram show 2>&1 | grep -E 'lan[0-9]_ifname' | sed -e s'/=.*//'); do
+	nvram unset $name
+done
+
+lan_ifnames_reset br0
+
+wl -i eth5 down
+wl -i eth6 down
+sleep 5
+killall eapd
+sleep 1
+/bin/eapd
+sleep 5
+wl -i eth5 up
+wl -i eth6 up

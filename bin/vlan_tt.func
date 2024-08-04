@@ -1,5 +1,80 @@
 #!/bin/sh
 
+## Logging
+##
+## message - log the things we normally want to see
+## message <message to log>
+message() {
+        [ "$VLAN_TT_TESTING" -eq 1 ] && echo "INFO: $@" 1>&2
+        logger -t "$myname" -p user.notice "$@"
+}
+
+## error - log the things that didn't go as planned
+##
+## error <error message>
+error() {
+        [ "$VLAN_TT_TESTING" -eq 1 ] && echo "ERROR: $@" 1>&2
+        logger -t "$myname" -p user.error "$@"
+}
+
+## Debug - log the things we need to figure out why things didn't go as planned
+##
+## debug <debug message>
+debug() {
+        [ "$VLAN_TT_TESTING" -eq 1 ] && echo "DEBUG: $@" 1>&2
+        logger -t "$myname" -p user.debug "$@"
+}
+
+## Command Log - stream of things we actually udpated on the router
+##
+## command_log <command>
+command_log(){
+        [ "$VLAN_TT_TESTING" -eq 1 ] && echo "COMMAND: $@" 1>&2
+        logger -t "$myname" -p user.info "$@"
+}
+
+## Log the execution and result of a command, return SUCCESS on sucessa and FAIL on fail.
+##                                                                                       
+## Additioanlly returns values of 0 on success and 1 on failure                          
+##                                                                                       
+## Note - this is not perfect - some commands need better handling, noteably             
+## the eapd restart. Where possible, those are logged                                    
+##                                                                                       
+## command_execute <command>                                                             
+command_execute(){                                                                       
+        local command="$1"                                                               
+        local output                                                                     
+        local res                                                                        
+                                                                                         
+        debug "command_execute called with \"$command\""                                 
+        command_log "$command"                                              
+        output=$($command 2>&1)                                             
+        res=$?                                                              
+        debug "command output:"                                                
+        debug "$output"                                 
+        if [ "$res" -gt 0 ]; then                              
+                echo "FAIL"                             
+                return 1                                     
+        else                                            
+                echo "SUCCESS"                                                           
+                return 0                                
+        fi                                                         
+}                                                       
+                                                                            
+                                                     
+## Configuration of a port list is comma deliomited, may have spaces, etc.
+##                                                                        
+## Clean them up.                                                         
+##                                                                        
+## normalize_ports <port list>                                                           
+normalize_ports(){                                                        
+        local list="$1"                                                   
+                                                                          
+        list=$(echo $list | sed -e 's/[[:space:]]//g;s/,/ /g')              
+        echo "$list"                                                      
+}                                                                         
+
+
 lan_make_ifname(){
 	local bridge="$1"
 	local lan
@@ -30,6 +105,28 @@ bridge_list(){
         echo $list
         return 0
 }
+
+## Get a list of interfaces associated with a specific bridge
+##                      
+## This is needed to reset the lanX_ifnames settings in NVRAM
+## bridge_get_ints <bridge>                                  
+bridge_get_ints(){                            
+        local bridge="$1"
+        local list
+                                                                               
+        ## Make sure we have what we need to run
+        if [ -z "$bridge" ]; then
+                error "bridge_get_ints : bridge opt cannot be null!"
+                echo "FAIL"                                  
+                return 1                      
+        fi
+
+        ## Get the list of interfaces in the bridge                
+        list=$(brctl show $bridge | awk '{print $NF}' | grep -v interfaces | tr '\n' ' ')
+        ## Return the list of interfaces
+        echo $list
+        return 0                                               
+}                                 
 
 lan_ifnames_reset(){
 	local bridge="$1"
@@ -105,7 +202,9 @@ bridge_create(){
 		echo "FAIL" 
 		return
 	fi
-	echo $(command_execute "brctl addbr $bridge")
+	command_execute "brctl addbr $bridge"
+	## forgot to set bridge up before
+	command_execute "ip link set $bridge up"
 }
 
 ## Get a list of existing bridges
