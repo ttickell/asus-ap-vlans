@@ -207,7 +207,7 @@ bridge_create(){
 	command_execute "brctl addbr $bridge"
 	## forgot to set bridge up before
 	command_execute "ip link set $bridge up"
-	comamnd_log "nvram set ${lan}_ifname=$bridge"
+	command_log "nvram set ${lan}_ifname=$bridge"
 	nvram set "${lan}_ifname"="$bridge"
 }
 
@@ -233,16 +233,22 @@ bridge_has_int(){
 	local bridge="$1"
 	local int="$2"
 	local output
-	local res
+	local cur
 
 	debug "bridge_has_int : Checking for $int in $bridge"
-	output=$(brctl show $bridge 2>&1 | grep $int)
-	res=$?
-	if [ "$res" -gt 0 ]; then
-		echo "FALSE"
-	else 
-		echo "TRUE"
-	fi
+	output=$(bridge_get_ints "$bridge")
+	
+	for cur in $output; do
+		if [ "$cur" == "$int" ]; then
+			debug "bridge_has_int : found $cur in $bridge"
+			echo 'TRUE'
+			return 0
+		fi
+	done
+	
+	debug "bridge_has_int : $int not found in $bridge"
+	echo "FALSE"
+	return 1
 }
 
 bridge_del_int(){
@@ -260,6 +266,15 @@ bridge_del_int(){
 		error "bridge_del_int : bridge \"$bridge\" and int \"$int\" must be specified"
 		echo "FAIL"
 		return 1
+	fi
+
+	debug "bridge_del_int : Checking if $int is in $bridge"
+	output=$(bridge_has_int "$bridge" "$int")
+	if [ "$output" == "FALSE" ]; then
+		## The port isn't there to be removed
+		debug "bridge_del_int : no, $int is not in $bridge - return success"
+		echo "SUCCESS"
+		return 0
 	fi
 
 	debug "bridge_del_int : removing $int from $bridge"
