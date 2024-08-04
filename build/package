@@ -1,0 +1,27 @@
+#!/bin/sh
+
+release="$1"
+[ -z "$1" ] && release="release-num"
+
+work=pkg_work
+
+mkdir -p $work/jffs/scripts
+mkdir -p $work/jffs/local/bin
+mkdir -p $work/jffs/local/etc
+mkdir -p $work/jffs/local/stubs
+chmod -R 755 $work
+
+
+cp bin/* $work/jffs/local/bin
+chmod 755 $work/jffs/local/bin/*
+
+cp -r etc/vlantt.d/  $work/jffs/local/etc/vlantt.d
+chmod 644 $work/jffs/local/etc/vlantt.d/*
+
+cp jffs_script_stubs/* $work/jffs/local/stubs
+chmod 644 $work/jffs/local/stubs/*
+
+(cd $work; tar --uid=0 --gid=0 --numeric-owner  -czvf ../vlan_tt-${1}.tgz jffs)
+
+rm -rf "$work"
+
