@@ -186,8 +186,8 @@ wifi_get_ints_by_ssid(){
 	fi
 
 	## Pull data from NVRAM
-	debug "wifi_get_ints_by_ssid : nvram show 2>&1 | grep \"_ssid=${ssid}\" | sed -e 's/_ssid=.*//' | tr '\n' ' '"
-	list=$(nvram show 2>&1 | grep "_ssid=${ssid}" | sed -e 's/_ssid=.*//' | tr '\n' ' ')
+	debug "wifi_get_ints_by_ssid : nvram show 2>&1 | grep \"wl[0-9].*_ssid=${ssid}\" | sed -e 's/_ssid=.*//' | tr '\n' ' '"
+	list=$(nvram show 2>&1 | grep "wl[0-9].*_ssid=${ssid}" | sed -e 's/_ssid=.*//' | tr '\n' ' ')
 	debug "wifi_get_ints_by_ssid : got list - $list"
 
 	## Return the list of interfaces
