@@ -167,12 +167,14 @@ bridge_exists(){
 	local output
 	local res
 
+	debug "bridge_exists : seeing if "$bridge" exists"
 	# Different versions of brctl respond differently
 	#  with error conditions	
 	output=$(brctl show $bridge 2>&1)
 	res=$?
 	# brctl 1.6 returns error when bridge does not exist
-	if [ "$res" -gt 1 ]; then
+	if [ "$res" -gt 0 ]; then
+		debug "bridge_exists : brctl v1.6 says bridge does not exist"
 		echo "FALSE"
 		return 1
 	fi
@@ -181,6 +183,7 @@ bridge_exists(){
 	output=$(echo "${output}" | grep "No such device")
 	res=$?
 	if [ "$res" -eq 0 ]; then
+		debug "bridge_exists : brctl v1.5 says bridge does not exist"
 		echo "FALSE"
 		return 1
 	fi
@@ -204,6 +207,7 @@ bridge_create(){
 		echo "FAIL" 
 		return
 	fi
+	debug "bridge_create : Making bridge $bridge"
 	command_execute "brctl addbr $bridge"
 	## forgot to set bridge up before
 	command_execute "ip link set $bridge up"
@@ -318,7 +322,7 @@ bridge_add_int(){
 		return 1
 	fi
 
-	## if we already ahve the int in bridge, we are done
+	## if we already have the int in bridge, we are done
 	output=$(bridge_has_int "$bridge" "$int")
 	if [ "$output" == "TRUE" ]; then
 		debug "bridge_add_int : Int \"$int\" is already in \"$bridge\" - returning"
