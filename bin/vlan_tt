@@ -429,6 +429,7 @@ for config in $(ls "${etc}/vlantt.d"); do
 	current=$(nvram get lan_ifnames)
 	if [ "$output" != "$current" ]; then
 		error "main: lan_ifnames and br0 membership not in agreement - reseting lan_ifnames"
+		exit 1
 		command_log "nvram set lan_ifnames=\"$output\""
 		nvram set lan_ifnames="$output"
 		WIFI_CHANGED=1
@@ -443,8 +444,6 @@ if [ "$WIFI_CHANGED" -eq 1 ]; then
 	wl -i eth5 down
 	wl -i eth6 down
 	sleep 5
-	output=$(bridge_get_ints "br0")
-	nvram set lan_ifnames="$output"
 	restart_eapd
 	sleep 5
 	wl -i eth5 up

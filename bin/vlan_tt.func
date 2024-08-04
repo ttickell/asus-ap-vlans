@@ -195,7 +195,9 @@ bridge_exists(){
 ## bridge_create <bridge name>
 bridge_create(){
 	local bridge="$1"
+	local lan
 
+	lan=$(lan_make_ifname "$bridge")
 	debug "bridge_create called with $bridge"
 	if [ -z "$bridge" ]; then
 		error  "bridge_create : option1 must be bridge name, cannot be null"
@@ -205,6 +207,8 @@ bridge_create(){
 	command_execute "brctl addbr $bridge"
 	## forgot to set bridge up before
 	command_execute "ip link set $bridge up"
+	comamnd_log "nvram set ${lan}_ifname=$bridge"
+	nvram set "${lan}_ifname"="$bridge"
 }
 
 ## Get a list of existing bridges
@@ -242,15 +246,18 @@ bridge_has_int(){
 }
 
 bridge_del_int(){
-	local $bridge="$1"
-	local $int="$2"
+	local bridge="$1"
+	local int="$2"
 	local lan
 	local output
 	local res
 
-	debug "$bridge_del_int : called with bridge \"$bridge\" and int \"$int\" - lan \"$lan\" auto generated"
-	if [ ! -z "$bridge" -a ! -z "$int" ]; then	
-		error "bridge_del_int : bridge and int must be specified"
+	lan=$(lan_make_ifname "$bridge")
+	debug "bridge_del_int : called with bridge \"$bridge\" and int \"$int\" - lan \"$lan\" auto generated"
+
+	## Make sure we have everythign we need
+	if [ -z "$bridge" -o -z "$int" ]; then	
+		error "bridge_del_int : bridge \"$bridge\" and int \"$int\" must be specified"
 		echo "FAIL"
 		return 1
 	fi
