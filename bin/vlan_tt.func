@@ -1,0 +1,12 @@
+## Get a list of existing bridges
+##
+## Simple and direct-just parrse out the names of all the bridge we have
+##
+## bridge_list
+bridge_list(){
+        local list
+        list=$(brctl show | grep '^br[0-9]' | awk '{print $1}' | tr '\n' ' ')
+        echo $list
+        return 0
+}
+
