@@ -89,12 +89,12 @@ command_execute(){
 	fi
 }
 
-make_lan_ifname(){
+lan_make_ifname(){
 	local bridge="$1"
 	local lan
 
 	if [ -z "$bridge" ]; then
-		error "make_lan_ifname : bridge opt is required"
+		error "lan_make_ifname : bridge opt is required"
 		echo "FAIL"
 		exit 1
 	fi
@@ -253,21 +253,63 @@ lan_ifnames_reset(){
 	local bridge="$1"
 	local lan
 	local output	
-	
+	local res
 	debug "lan_ifnames_reset : called for $bridge"
 
-	lan=$(make_lan_ifname "$bridge")
+	lan=$(lan_make_ifname "$bridge")
 	if [ "$lan" == "FAIL" ]; then
-		error "lan_ifnames_reset : make_lan_ifname failed on $bridge"
+		error "lan_ifnames_reset : lan_make_ifname failed on $bridge"
 	fi
 	
 	output=$(bridge_get_ints "$bridge")
 	debug "lan_ifnames_reset : reseting ${lan}_ifnames to \"$output\""	
 	command_log "nvram set ${lan}_ifnames=\"$output\""
 	nvram set ${lan}_ifnames="$output"
+	res=$?
+
+	if [ "$res" -gt 0 ]; then
+		echo "FAIL"
+		return 1
+	else 
+		echo "SUCCESS"
+		return 0
+	fi
+
 
 }
-	
+
+bridge_del_int(){
+	local $bridge="$1"
+	local $int="$2"
+	local lan
+	local output
+	local res
+
+	debug "$bridge_del_int : called with bridge \"$bridge\" and int \"$int\" - lan \"$lan\" auto generated"
+	if [ ! -z "$bridge" -a ! -z "$int" ]; then	
+		error "bridge_del_int : bridge and int must be specified"
+		echo "FAIL"
+		return 1
+	fi
+
+	debug "bridge_del_int : removing $int from $bridge"
+	output=$(command_execute "brctl delif $bridge $int")
+	if [ "$output" == "FAIL" ]; then
+		error "bridge_del_int : could not remove $int from $bridge"
+		echo "FAIL"
+		return 1
+	fi
+	debug "bridge_del_int : resetting lan_ifnames for $bridge"
+	output=$(lan_ifnames_reset "$bridge")
+	if [ "$output" == "FAIL" ]; then
+		error "bridge_del_int : could not reset lan_ifnames for $bridge"
+		echo "FAIL"
+		return 1
+	else
+		echo "SUCCESS"
+		return 0
+	fi
+}
 
 ## bridge_add_int bridge int
 ##
@@ -313,8 +355,12 @@ bridge_add_int(){
 		output=$(bridge_has_int "$cur_br" "$int")
 		if [ "$output" == "TRUE" ]; then
 			debug "bridge_add_int : Ensuring $int removed from $cur_br"
-			output=$(command_execute "brctl delif $cur_br $int")
-			output=$(lan_ifnames_reset "$cur_br")
+			output=$(bridge_del_int "$cur_br" "$int")
+			if [ "$output" == "FAIL" ]; then
+				error "bridge_add_int : could not remove $int from $cur_br"
+				echo "FAIL"
+				return 1
+			fi
 		fi
 	done
 
@@ -324,12 +370,20 @@ bridge_add_int(){
 	output=$(command_execute "brctl addif $bridge $int")
 	res=$?
 	if [ "$output" == "FAIL" ]; then
+		error "bridge_add_int : could not add $int to $bridge"
 		echo FAIL
 		return 1
-	else
-		echo "SUCCESS"
-		return 0
 	fi
+	debug "bridge_add_int : resetting lan_ifnames for $bridge"
+	output=$(lan_ifnames_reset "$bridge")
+	if [ "$output" == "FAIL" ]; then
+		error "bridge_add_int : could not reset lan_ifnames for $bridge"
+		echo "FAIL"
+		return 1
+	fi
+
+	echo "SUCCESS"
+	return 0
 }
 	
 ## Ensure we have all the tagged ports we want in a specific bridge for a VLAN
@@ -523,35 +577,47 @@ wifi_config(){
 	##
 	## default configuration puts all the Wireless networks on the same bridge
 	##  - we need to reassign them to the bridges we want, with the right VLAN setups.
+	##
+	
 	for cur_int in $wifi_ints; do
 		debug "wifi_config : Calling bridge_add_int \"$bridge\" \"$cur_int\""
 		output=$(bridge_add_int "$bridge" "$cur_int")
 		if [ "$output" == "FAIL" ]; then
 			error "wifi_config : could not att $cur_int to $bridge.  bridge_add_int errored out"
+			echo "FAIL"
+			return 1
 		elif [ "$output" == "SUCCESS" ]; then
 			## if we added an interface to the bridge, we need to note that
 			## so we can return a value sufficient to restart EAPD
 			debug "wifi_config : we saw a change"
 			changed=1
+		elif [ "$output" == "NOCHANGE" ]; then
+			debug "wifi_config : bridge_add_int retruned NOCHANGE for $cur_int in $bridge"
 		fi
 	done
 
 	## if we changed something, reset the nvram lanX_ifnames settings
+	#if [ "$changed" -eq 1 ]; then
+	#	# get list of bridge interfaces
+	#	output=$(bridge_get_ints "$bridge")
+	#	# reset lanX_ifnames to list of bridge interfaces
+	#	if [ ! -z "$output" -a "$output" != "FAIL" ]; then
+	#		echo placeholder
+	#		command_log "nvram set \"${lan_ifname}_ifnames\"=\"$output\""
+	#		nvram set "${lan_ifname}_ifnames"="$output"
+	#	fi
+	#	command_log "nvram set \"${lan_ifname}_ifname\"=\"$bridge\""
+	#	nvram set "${lan_ifname}_ifname"="$bridge"
+	#	echo "SUCCESS"
+	#else
+	#	echo "NOCHANGE"
+	#fi
 	if [ "$changed" -eq 1 ]; then
-		# get list of bridge interfaces
-		output=$(bridge_get_ints "$bridge")
-		# reset lanX_ifnames to list of bridge interfaces
-		if [ ! -z "$output" -a "$output" != "FAIL" ]; then
-			echo placeholder
-			command_log "nvram set \"${lan_ifname}_ifnames\"=\"$output\""
-			nvram set "${lan_ifname}_ifnames"="$output"
-		fi
-		command_log "nvram set \"${lan_ifname}_ifname\"=\"$bridge\""
-		nvram set "${lan_ifname}_ifname"="$bridge"
-		echo "SUCCESS"
+		echo "CHANGED"
 	else
 		echo "NOCHANGE"
 	fi
+	return 0
 }	
 
 ## Restart EAPD after Wifi Changes
@@ -568,6 +634,7 @@ restart_eapd(){
 	sleep 3
 	debug "eapd_restart : starting EAPD"
 	# doesn't not like my command wrapper
+	command_log "/usr/sbin/eapd"
 	/bin/eapd
 
 	# restart eapd
@@ -615,7 +682,7 @@ for config in $(ls "${etc}/vlantt.d"); do
 		echo "     This is required if WIFI_SSID is set"
 		exit
 	fi
-	LAN_IFNAME=$(make_lan_ifname "$BRIDGE_INT")
+	LAN_IFNAME=$(lan_make_ifname "$BRIDGE_INT")
 	if [ "$LAN_IFNAME" == "FAIL" ]; then
 		error "main : Could not make LAN _ifname name from $BRIDGE_INT"
 		exit 1
@@ -675,11 +742,13 @@ for config in $(ls "${etc}/vlantt.d"); do
 		output=$(wifi_config "$VLAN_ID" "$BRIDGE_INT" "$LAN_IFNAME" "$WIFI_SSID")
 		debug "main : wifi_config returns \"$output\""
 		if [ "$output" == "FAIL" ]; then
-			error "main : wifi_config returned failure:"
-		elif [ "$output" == "SUCCESS" ]; then
+			error "main : wifi_config returned failure!"
+			exit 1
+		elif [ "$output" == "CHANGED" ]; then
+			debug "main : wifi_config returned $output - setting WIFI_CHANGED"
 			WIFI_CHANGED=1
 		else
-			debug "main : wifi_config returned no change"
+			debug "main : wifi_config returned $output"
 		fi
 	else
 		## If we could not work with the configuration, note what was missing
@@ -690,13 +759,14 @@ for config in $(ls "${etc}/vlantt.d"); do
 		debug "       WIFI_SSID      -> $WIFI_SSID"
 	fi
 
-	## validate lan_ifname is relfective of br0
+	## validate lan_ifname is relfective of br0 - this sholdn't be the case at this point
 	output=$(bridge_get_ints "br0")
 	current=$(nvram get lan_ifnames)
-	debug "main: lan_ifnames and br0 membership not in agreement - reseting lan_ifnames"
 	if [ "$output" != "$current" ]; then
+		error "main: lan_ifnames and br0 membership not in agreement - reseting lan_ifnames"
 		command_log "nvram set lan_ifnames=\"$output\""
 		nvram set lan_ifnames="$output"
+		WIFI_CHANGED=1
 	fi
 
 done
