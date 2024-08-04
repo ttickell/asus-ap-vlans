@@ -1,7 +1,6 @@
 #!/bin/sh
-
 ## vlan_tt - VLANs Take Two
-
+[ -z "$VLAN_TT_TESTING" ] && VLAN_TT_TESTING=0
 ## This script is meant for use on Asus routers running in access point mode.
 ##  Any other use may remove your node from the networ ... or worse.
 ##
@@ -90,6 +89,24 @@ command_execute(){
 	fi
 }
 
+make_lan_ifname(){
+	local bridge="$1"
+	local lan
+
+	if [ -z "$bridge" ]; then
+		error "make_lan_ifname : bridge opt is required"
+		echo "FAIL"
+		exit 1
+	fi
+	# br0 maps to lan_ifnames, not lan0 ifnames
+	if [ "$bridge" == "br0" ]; then
+		lan="lan"
+	else
+		lan=$(echo $bridge | sed -e 's/br/lan/')
+	fi
+	echo $lan
+	return 0
+}
 ## Determine if a bridge exists
 ##
 ## before we make a bridge, we need to know if it already exists
@@ -232,6 +249,26 @@ tagged_interface_create(){
 	return 0
 }
 
+lan_ifnames_reset(){
+	local bridge="$1"
+	local lan
+	local output	
+	
+	debug "lan_ifnames_reset : called for $bridge"
+
+	lan=$(make_lan_ifname "$bridge")
+	if [ "$lan" == "FAIL" ]; then
+		error "lan_ifnames_reset : make_lan_ifname failed on $bridge"
+	fi
+	
+	output=$(bridge_get_ints "$bridge")
+	debug "lan_ifnames_reset : reseting ${lan}_ifnames to \"$output\""	
+	command_log "nvram set ${lan}_ifnames=\"$output\""
+	nvram set ${lan}_ifnames="$output"
+
+}
+	
+
 ## bridge_add_int bridge int
 ##
 ## Add and interface to a bridge.  If the interface is already in another bridge, it will be removed	
@@ -277,6 +314,7 @@ bridge_add_int(){
 		if [ "$output" == "TRUE" ]; then
 			debug "bridge_add_int : Ensuring $int removed from $cur_br"
 			output=$(command_execute "brctl delif $cur_br $int")
+			output=$(lan_ifnames_reset "$cur_br")
 		fi
 	done
 
@@ -493,6 +531,7 @@ wifi_config(){
 		elif [ "$output" == "SUCCESS" ]; then
 			## if we added an interface to the bridge, we need to note that
 			## so we can return a value sufficient to restart EAPD
+			debug "wifi_config : we saw a change"
 			changed=1
 		fi
 	done
@@ -504,8 +543,10 @@ wifi_config(){
 		# reset lanX_ifnames to list of bridge interfaces
 		if [ ! -z "$output" -a "$output" != "FAIL" ]; then
 			echo placeholder
+			command_log "nvram set \"${lan_ifname}_ifnames\"=\"$output\""
 			nvram set "${lan_ifname}_ifnames"="$output"
 		fi
+		command_log "nvram set \"${lan_ifname}_ifname\"=\"$bridge\""
 		nvram set "${lan_ifname}_ifname"="$bridge"
 		echo "SUCCESS"
 	else
@@ -574,7 +615,14 @@ for config in $(ls "${etc}/vlantt.d"); do
 		echo "     This is required if WIFI_SSID is set"
 		exit
 	fi
-
+	LAN_IFNAME=$(make_lan_ifname "$BRIDGE_INT")
+	if [ "$LAN_IFNAME" == "FAIL" ]; then
+		error "main : Could not make LAN _ifname name from $BRIDGE_INT"
+		exit 1
+	fi
+	echo 
+	echo "LAN_IFNAME NOW $LAN_IFNAME"
+	echo
 	## Does the bridge exist
 	debug "main: Making bridge if it does not exist"
 	if [ $(bridge_exists "$BRIDGE_INT") == "FALSE" ]; then
@@ -625,7 +673,7 @@ for config in $(ls "${etc}/vlantt.d"); do
 	if [ ! -z "$VLAN_ID" -a ! -z "$BRIDGE_INT" -a ! -z "$LAN_IFNAME" -a ! -z "$WIFI_SSID" ]; then
 		debug "main : calling wifi_config with vlan \"$VLAN_ID\", bridge \"$BRIDGE_INT\", lan_ifname \"$LAN_IFNAME\", and SSID \"$WIFI_SSID\""
 		output=$(wifi_config "$VLAN_ID" "$BRIDGE_INT" "$LAN_IFNAME" "$WIFI_SSID")
-		debug "main : wifi_config returns"
+		debug "main : wifi_config returns \"$output\""
 		if [ "$output" == "FAIL" ]; then
 			error "main : wifi_config returned failure:"
 		elif [ "$output" == "SUCCESS" ]; then
@@ -639,8 +687,16 @@ for config in $(ls "${etc}/vlantt.d"); do
 		debug "       $config settings contain insufficient iformation"
 		debug "       VLAN_ID        -> $VLAN_ID"
 		debug "       BRIDGE_INT     -> $BRIDGE_INT"
-		debug "       LAN_IFNAME     -> $LAN_IFNAME"
 		debug "       WIFI_SSID      -> $WIFI_SSID"
+	fi
+
+	## validate lan_ifname is relfective of br0
+	output=$(bridge_get_ints "br0")
+	current=$(nvram get lan_ifnames)
+	debug "main: lan_ifnames and br0 membership not in agreement - reseting lan_ifnames"
+	if [ "$output" != "$current" ]; then
+		command_log "nvram set lan_ifnames=\"$output\""
+		nvram set lan_ifnames="$output"
 	fi
 
 done
@@ -649,9 +705,17 @@ done
 ##  Sadly, I don't know why we do this - found it in others' documentation but no one documented
 ##  what EAPD is / does / why it's needed.  That's on the list to figure out.
 if [ "$WIFI_CHANGED" -eq 1 ]; then
+	wl -i eth5 down
+	wl -i eth6 down
+	sleep 5
 	output=$(bridge_get_ints "br0")
 	nvram set lan_ifnames="$output"
 	restart_eapd
+	sleep 5
+	wl -i eth5 up
+	wl -i eth6 up
+else
+	debug "main: Wifi not changed, not restarting EAPD"
 fi
 
 ## Dump extra information if we are testing
