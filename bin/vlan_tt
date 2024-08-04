@@ -99,15 +99,6 @@ tagged_ports(){
 		debug "tagged_ports : looking at $port in $bridge for $vlan"
 		tagged_port="${port}.${vlan}"
 
-		#### WE DO THIS IN bridge_add_int now
-		## See if this port is already tagged in the bridge
-		#debug "tagged_ports : Checking if $tagged_port is in $bridge"
-		#output=$(bridge_has_int "$bridge" "$tagged_port")
-		#if [ "$output" == "TRUE" ]; then
-		#	debug "$tagged_port already in $bridge"
-		#	continue
-		#fi
-	
 		## If we don't have a tagged interface in the bridge, see if
 		## this interface has been defined
 		debug "tagged_ports : calling tagged_interface_create with port \"$port\" and vlan \"$vlan\""
@@ -261,22 +252,6 @@ wifi_config(){
 		fi
 	done
 
-	## if we changed something, reset the nvram lanX_ifnames settings
-	#if [ "$changed" -eq 1 ]; then
-	#	# get list of bridge interfaces
-	#	output=$(bridge_get_ints "$bridge")
-	#	# reset lanX_ifnames to list of bridge interfaces
-	#	if [ ! -z "$output" -a "$output" != "FAIL" ]; then
-	#		echo placeholder
-	#		command_log "nvram set \"${lan_ifname}_ifnames\"=\"$output\""
-	#		nvram set "${lan_ifname}_ifnames"="$output"
-	#	fi
-	#	command_log "nvram set \"${lan_ifname}_ifname\"=\"$bridge\""
-	#	nvram set "${lan_ifname}_ifname"="$bridge"
-	#	echo "SUCCESS"
-	#else
-	#	echo "NOCHANGE"
-	#fi
 	if [ "$changed" -eq 1 ]; then
 		echo "CHANGED"
 	else
