@@ -1,3 +1,24 @@
+#!/bin/sh
+
+lan_make_ifname(){
+	local bridge="$1"
+	local lan
+
+	if [ -z "$bridge" ]; then
+		error "lan_make_ifname : bridge opt is required"
+		echo "FAIL"
+		exit 1
+	fi
+	# br0 maps to lan_ifnames, not lan0 ifnames
+	if [ "$bridge" == "br0" ]; then
+		lan="lan"
+	else
+		lan=$(echo $bridge | sed -e 's/br/lan/')
+	fi
+	echo $lan
+	return 0
+}
+
 ## Get a list of existing bridges
 ##
 ## Simple and direct-just parrse out the names of all the bridge we have
@@ -10,3 +31,221 @@ bridge_list(){
         return 0
 }
 
+lan_ifnames_reset(){
+	local bridge="$1"
+	local lan
+	local output	
+	local res
+	debug "lan_ifnames_reset : called for $bridge"
+
+	lan=$(lan_make_ifname "$bridge")
+	if [ "$lan" == "FAIL" ]; then
+		error "lan_ifnames_reset : lan_make_ifname failed on $bridge"
+	fi
+	
+	output=$(bridge_get_ints "$bridge")
+	debug "lan_ifnames_reset : reseting ${lan}_ifnames to \"$output\""	
+	command_log "nvram set ${lan}_ifnames=\"$output\""
+	nvram set ${lan}_ifnames="$output"
+	res=$?
+
+	if [ "$res" -gt 0 ]; then
+		echo "FAIL"
+		return 1
+	else 
+		echo "SUCCESS"
+		return 0
+	fi
+
+
+}
+
+## Determine if a bridge exists
+##
+## before we make a bridge, we need to know if it already exists
+##
+## bridge_exists <bridge name>
+bridge_exists(){
+	local bridge="$1"
+	local output
+	local res
+
+	# Different versions of brctl respond differently
+	#  with error conditions	
+	output=$(brctl show $bridge 2>&1)
+	res=$?
+	# brctl 1.6 returns error when bridge does not exist
+	if [ "$res" -gt 1 ]; then
+		echo "FALSE"
+		return 1
+	fi
+	# brctl 1.5 (and presumably lower, no output device) returns0
+	#  but logs an error
+	output=$(echo "${output}" | grep "No such device")
+	res=$?
+	if [ "$res" -eq 0 ]; then
+		echo "FALSE"
+		return 1
+	fi
+	echo "TRUE"
+	return 0
+}
+
+## Create a bridge
+##
+## if we need a bridge that doesn't exist, make one.
+## 
+## bridge_create <bridge name>
+bridge_create(){
+	local bridge="$1"
+
+	debug "bridge_create called with $bridge"
+	if [ -z "$bridge" ]; then
+		error  "bridge_create : option1 must be bridge name, cannot be null"
+		echo "FAIL" 
+		return
+	fi
+	echo $(command_execute "brctl addbr $bridge")
+}
+
+## Get a list of existing bridges
+## 
+## Simple and direct-just parrse out the names of all the bridge we have
+##
+## bridge_list
+bridge_list(){
+	local list
+	list=$(brctl show | grep '^br[0-9]' | awk '{print $1}' | tr '\n' ' ')
+	echo $list
+	return 0
+}
+
+## Check if an interface is in a bridge
+## 
+## for any given bridge and interface, check to see if that interface
+##  is already in the bridge
+##
+## bridge_has_int <bridge> <interface>
+bridge_has_int(){
+	local bridge="$1"
+	local int="$2"
+	local output
+	local res
+
+	debug "bridge_has_int : Checking for $int in $bridge"
+	output=$(brctl show $bridge 2>&1 | grep $int)
+	res=$?
+	if [ "$res" -gt 0 ]; then
+		echo "FALSE"
+	else 
+		echo "TRUE"
+	fi
+}
+
+bridge_del_int(){
+	local $bridge="$1"
+	local $int="$2"
+	local lan
+	local output
+	local res
+
+	debug "$bridge_del_int : called with bridge \"$bridge\" and int \"$int\" - lan \"$lan\" auto generated"
+	if [ ! -z "$bridge" -a ! -z "$int" ]; then	
+		error "bridge_del_int : bridge and int must be specified"
+		echo "FAIL"
+		return 1
+	fi
+
+	debug "bridge_del_int : removing $int from $bridge"
+	output=$(command_execute "brctl delif $bridge $int")
+	if [ "$output" == "FAIL" ]; then
+		error "bridge_del_int : could not remove $int from $bridge"
+		echo "FAIL"
+		return 1
+	fi
+	debug "bridge_del_int : resetting lan_ifnames for $bridge"
+	output=$(lan_ifnames_reset "$bridge")
+	if [ "$output" == "FAIL" ]; then
+		error "bridge_del_int : could not reset lan_ifnames for $bridge"
+		echo "FAIL"
+		return 1
+	else
+		echo "SUCCESS"
+		return 0
+	fi
+}
+
+## bridge_add_int bridge int
+##
+## Add and interface to a bridge.  If the interface is already in another bridge, it will be removed	
+## 
+## bridge_add_int <bridge> <interface>		
+bridge_add_int(){
+	local bridge="$1"
+	local int="$2"
+	local output
+	local res
+	local list
+	local cur_br
+	debug "bridge_add_int : ------------------------------------------------------"
+	debug "bridge_add_int : called with bridge \"$bridge\" and int \"$int\""
+
+	## make sure we have what we need
+	if [ -z "$bridge" -o -z "$int" ]; then 
+		error "bridge_add_int : bridge and int must be specified"
+		echo "FAIL"
+		return 1
+	fi
+
+	## if we already ahve the int in bridge, we are done
+	output=$(bridge_has_int "$bridge" "$int")
+	if [ "$output" == "TRUE" ]; then
+		debug "bridge_add_int : Int \"$int\" is already in \"$bridge\" - returning"
+		echo "NOCHANGE"
+		return 0
+	fi
+
+	## get a list of bridges and remove the int from all of them	
+	list=$(bridge_list)
+	for cur_br in $list; do
+		debug "bridge_add_int : looking at bridge $cur_br to see if $int needs to be removed"
+		if [ "$cur_br" == "$bridge" ]; then
+			## This is the one we want in there and we already know it's not
+			##  becase we didn't return, above.
+			debug "bridge_add_int : skipping $cur_br for $int removal because it matches desired bridge $bridge"
+			continue
+		fi
+		## if this is a member of another bridge, remove it	
+		output=$(bridge_has_int "$cur_br" "$int")
+		if [ "$output" == "TRUE" ]; then
+			debug "bridge_add_int : Ensuring $int removed from $cur_br"
+			output=$(bridge_del_int "$cur_br" "$int")
+			if [ "$output" == "FAIL" ]; then
+				error "bridge_add_int : could not remove $int from $cur_br"
+				echo "FAIL"
+				return 1
+			fi
+		fi
+	done
+
+	## Now we can finally add the interface to the bridge, knowing it's not
+	##  already there and it's not in other bridges
+	debug "bridge_add_int : Adding $int to $bridge"
+	output=$(command_execute "brctl addif $bridge $int")
+	res=$?
+	if [ "$output" == "FAIL" ]; then
+		error "bridge_add_int : could not add $int to $bridge"
+		echo FAIL
+		return 1
+	fi
+	debug "bridge_add_int : resetting lan_ifnames for $bridge"
+	output=$(lan_ifnames_reset "$bridge")
+	if [ "$output" == "FAIL" ]; then
+		error "bridge_add_int : could not reset lan_ifnames for $bridge"
+		echo "FAIL"
+		return 1
+	fi
+
+	echo "SUCCESS"
+	return 0
+}
