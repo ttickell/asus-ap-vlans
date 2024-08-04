@@ -327,9 +327,7 @@ for config in $(ls "${etc}/vlantt.d"); do
 		error "main : Could not make LAN _ifname name from $BRIDGE_INT"
 		exit 1
 	fi
-	echo 
-	echo "LAN_IFNAME NOW $LAN_IFNAME"
-	echo
+
 	## Does the bridge exist
 	debug "main: Making bridge if it does not exist"
 	if [ $(bridge_exists "$BRIDGE_INT") == "FALSE" ]; then
