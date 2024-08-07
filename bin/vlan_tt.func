@@ -13,7 +13,7 @@ message() {
 ##
 ## error <error message>
 error() {
-        [ "$VLAN_TT_TESTING" -eq 1 ] && echo "ERROR: $@" 1>&2
+        echo "ERROR: $@" 1>&2
         logger -t "$myname" -p user.error "$@"
 }
 

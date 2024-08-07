@@ -15,6 +15,10 @@ else
 	base="/jffs/local"
 fi
 
+## Now that we've set our pathing ....
+## If we just want debugging, not a change in pathing, use VLAN_TT_DEBUG
+[ "$VLAN_TT_DEBUG" -eq 1 ] && VLAN_TT_TESTING=1
+
 ## Where are our configiguration files?
 etc="$base/etc"
 
@@ -168,6 +172,9 @@ untagged_ports(){
 wifi_get_ints_by_ssid(){
 	local ssid="$1"
 	local list
+	local fixed_list
+	local output
+	local current_int
 
 	## Make sure we have what we need to run
 	if [ -z "$ssid" ]; then
@@ -180,9 +187,25 @@ wifi_get_ints_by_ssid(){
 	debug "wifi_get_ints_by_ssid : nvram show 2>&1 | grep \"wl[0-9].*_ssid=${ssid}\" | sed -e 's/_ssid=.*//' | tr '\n' ' '"
 	list=$(nvram show 2>&1 | grep "wl[0-9].*_ssid=${ssid}" | sed -e 's/_ssid=.*//' | tr '\n' ' ')
 	debug "wifi_get_ints_by_ssid : got list - $list"
+	debug "wifi_get_ints_by_ssid : Looking for any disabled wireless interfaces"
+	for current_int in $list; do
+		debug "wifi_get_ints_by_ssid : nvram get ${current_int}_bss_enabled"
+		output=$(nvram get ${current_int}_bss_enabled)
+		debug "wifi_get_ints_by_ssid : $current_int bss_enabled set to $output"
+		if [ "$output" -eq 0 ]; then
+			debug "wifi_get_ints_by_ssid : $current_int is disabled - removing from list"
+			continue
+		elif [ -z "$fixed_list" ]; then
+			fixed_list=$current_int
+		else
+			fixed_list="$fixed_list $current_int"
+		fi
+		
+	done
 
 	## Return the list of interfaces
-	echo $list
+	debug "wifi_get_ints_by_ssid : returning \"$fixed_list\" for wifi ints"
+	echo $fixed_list
 	return 0
 }
 
