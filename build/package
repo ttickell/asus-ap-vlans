@@ -6,7 +6,7 @@ release="$1"
 
 work=pkg_work
 builds=builds
-
+umask 022
 mkdir -p builds
 mkdir -p $work/jffs/scripts
 mkdir -p $work/jffs/local/bin
@@ -19,8 +19,9 @@ chmod -R 755 $work
 cp bin/* $work/jffs/local/bin
 chmod 755 $work/jffs/local/bin/*
 
-cp -r etc/vlantt.d/  $work/jffs/local/etc/vlantt.d
-chmod 644 $work/jffs/local/etc/vlantt.d/*
+#cp -r etc/vlantt.d/  $work/jffs/local/etc/vlantt.d
+#chmod 644 $work/jffs/local/etc/vlantt.d/*
+
 
 cp stubs/* $work/jffs/local/stubs
 chmod 644 $work/jffs/local/stubs/*
