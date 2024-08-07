@@ -59,8 +59,6 @@ else
 	## We also will rely on an external cron jon re-run this setup / re-install 
 	## the cron job after each reboot.
 	##
-	## Execute the script for initial changes
-	${path}/bin/vlan_tt
 	# Make sure our cron job is there - will be missing in reboot
 	test=$(grep "\# vlan_tt" "/var/spool/cron/crontabs/nimda" 2>&1)
 	res=$?

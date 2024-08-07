@@ -17,7 +17,7 @@ fi
 
 ## Now that we've set our pathing ....
 ## If we just want debugging, not a change in pathing, use VLAN_TT_DEBUG
-[ "$VLAN_TT_DEBUG" -eq 1 ] && VLAN_TT_TESTING=1
+[ "$VLAN_TT_DEBUG" == "1" ] && VLAN_TT_TESTING=1
 
 ## Where are our configiguration files?
 etc="$base/etc"
