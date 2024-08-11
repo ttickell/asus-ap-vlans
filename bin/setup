@@ -60,7 +60,7 @@ else
 	## the cron job after each reboot.
 	##
 	# Make sure our cron job is there - will be missing in reboot
-	test=$(grep "\# vlan_tt" "/var/spool/cron/crontabs/nimda" 2>&1)
+	test=$(grep "\#.*vlan_tt" "/var/spool/cron/crontabs/nimda" 2>&1)
 	res=$?
 
 	## Add Cron job to re-execute to keep to fix any updates made after a GUIE change
