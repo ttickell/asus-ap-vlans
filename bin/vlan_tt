@@ -1,12 +1,15 @@
 #!/bin/sh
+##
 ## vlan_tt - VLANs Take Two
-[ -z "$VLAN_TT_TESTING" ] && VLAN_TT_TESTING=0
+##
 ## This script is meant for use on Asus routers running in access point mode.
 ##  Any other use may remove your node from the networ ... or worse.
 ##
-## for full details please see README.md
+## For full details please see README.md
 
-## Do things a bit differently if we are testing
+## Assume we are not testing
+[ -z "$VLAN_TT_TESTING" ] && VLAN_TT_TESTING=0
+## but do things a bit differently if we are testing
 ##
 ## Set the environment vairable VLAN_TT_TESTING to 1 to enable testing mode
 if [ "$VLAN_TT_TESTING" -eq 1 ]; then
@@ -22,11 +25,19 @@ fi
 ## Where are our configiguration files?
 etc="$base/etc"
 
-## Where are functions?
-. "${base}/bin/vlan_tt.func"
-
 ## Name top bue used as tag when logging to Syslog
 myname=$(basename "$0")
+
+## load externlized functions
+. "${base}/bin/vlan_tt.func"
+
+## Make sure we are the only copy running
+## I dont' think I've ever actually done this with flock, thanks to this guy:
+##  https://www.putorius.net/lock-files-bash-scripts.html
+lockfile="/tmp/${myname}.lck"
+debug "main : $creating and locking \"$lockfile\".  Failure results in silent exit of script"
+exec 100 > "$lockfile" || exit 1
+flock -w 5 100 || exit 1
 
 ## Create a tagged interface
 ##
