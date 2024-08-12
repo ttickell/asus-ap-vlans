@@ -81,17 +81,42 @@ The VLAN051-IOT and VLAN051-IOT2 share the same VLAN_ID and BRIDGE_INT, but have
 
 The VLAN200-CAMERAS includes the option "PORTS_UNTAGGED" to associate a physical pport, but no WIFI_SSID.
 
-
 ## Installation on AP running Asuswrt-Merlin
 ### Initial Setup
 #### Scripts and Config on /jffs
+SSH into your unit, and run the command:
+```
+curl -L "https://<release url>" | (cd / ; tar xzf -)
+```
+
+Release URL can be found under the releasse of of thie repo for the vlan_tt-<version>.tgz file. For instance, for version 1.0.6, you will copy the link for vlan_tt-1.0.6.tgz, and run the command:
+
+```
+curl -L "https://github.com/ttickell/asus-ap-vlans-tt/releases/download/1.0.6/vlan_tt-1.0.6.tgz" | ( cd / ; tar xzvf - )
+```
 #### Updating Configuration
-### Running on Reboots
-### Running on GUI Changes
+The release does not contain any configration files, you will need to create them in /jffs/local/etc/vlantt.d
+### Running on Reboots and GUI Changes
+To set things up and and update the Merlin /jffs/scripts to account for setting things up at each boot and each change to Wifi config via the GUI, run:
+```
+/jffs/local/bin/setup
+```
+
+This will reconfigure the unit per your configuraiton files and update /jffs/sciprts/services-start and /jffs/scripts/serice-event-end.
 ## Installation on stock Asus firmware
 ### Initial Setup
-### Running on Reboots
-### Running on GUI Changes
+The initial setup on stock firmware is idential to the steps for Merlin.
+### Running on Reboots and GUI Changes
+The difference between stock firmware and Merlin come about in trying to keep the unit conifgured with your vlans.  
+
+On stock, the setup script will install a cron job for you admin user that will check the setup via the setup script once every minute.  After you change Wifi settings in the gui, cron will need to run the setup script to put things back the way you want them.
+
+On reboot, there is no more contab.  Therefore, you must have a script running a timed job somewhere else that will run the setup script on a timed interval.  I used my synology, and the crontab looks like:
+```
+*/5 * * * *         ssh <user>@<acess point> /jffs/local/bin/setup
+```
+
+Obviously, This requires you use a system that has key'ed ssh access to your access point.  You can add and extra key via the GUI, as needed.  In the end, any reboot means it will take up to your remote cron itnerval (five minutes in my case) to put the VLANs back in the desired state. 
 ## Credits and Thanks
 First, I stumbled upon this:
 
