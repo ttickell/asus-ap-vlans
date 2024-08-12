@@ -10,6 +10,8 @@ path=/jffs/local
 stubs="${path}/stubs"
 
 ## Check if we are on Merlin
+[ -z "$USER" ] && echo "USER Not set in ENV!" && exit 1
+
 have_merlin=`uname -a | grep -i merlin`
 res=$?
 if [ "$res" -gt 0 ]; then
@@ -60,12 +62,12 @@ else
 	## the cron job after each reboot.
 	##
 	# Make sure our cron job is there - will be missing in reboot
-	test=$(grep "\#.*vlan_tt" "/var/spool/cron/crontabs/nimda" 2>&1)
+	test=$(grep "\#.*vlan_tt" "/var/spool/cron/crontabs/$USER" 2>&1)
 	res=$?
 
 	## Add Cron job to re-execute to keep to fix any updates made after a GUIE change
 	if [ "$res" -gt 0 ]; then 
-		echo '*/1 * * * * 	/jffs/local/bin/vlan_tt  # added by vlan_tt setup' >> /var/spool/cron/crontabs/nimda
+		echo '*/1 * * * * 	/jffs/local/bin/vlan_tt  # added by vlan_tt setup' >> /var/spool/cron/crontabs/$USER
 		killall -HUP crond
 	fi
 fi
