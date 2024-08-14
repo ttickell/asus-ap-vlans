@@ -35,9 +35,10 @@ myname=$(basename "$0")
 ## I dont' think I've ever actually done this with flock, thanks to this guy:
 ##  https://www.putorius.net/lock-files-bash-scripts.html
 lockfile="/tmp/${myname}.lck"
-debug "main : $creating and locking \"$lockfile\".  Failure results in silent exit of script"
+debug "main : creating and locking \"$lockfile\".  Failure results in silent exit of script"
 exec 100>"$lockfile" || exit 1
-flock -n 100 || exit 1
+flock -n 100 || exit 2
+trap 'flock -u 100' EXIT
 
 ## Create a tagged interface
 ##
@@ -463,3 +464,4 @@ fi
 if [ "$VLAN_TT_TESTING" -eq 1 ]; then
 	nvram show | grep -E "lan.?_ifname.?"
 fi
+
